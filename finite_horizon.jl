@@ -156,19 +156,11 @@ end
 
 # Convert policy dict to array
 function array_policy(π::PolicySlice)
-    α_lo = 1
-    α_hi = 50
-    β_lo = 1
-    β_hi = 50
-    policy = zeros(α_hi, β_hi)
-    for i = 1 : α_hi
-        for j = 1 : β_hi
+    policy = zeros(50, 50)
+    for i = 1 : 50
+        for j = 1 : 50
             s = State(i, j, 0)
-            if s in keys(π)
-                policy[i, j] = π[s]
-            else
-                policy[i, j] = -2
-            end
+            policy[i, j] = π[s]
         end
     end
     policy
