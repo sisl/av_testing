@@ -13,7 +13,7 @@ using PGFPlots
     rho::Float64 = 0.9
     gamma::Float64 = 1.0
 
-    # Parameters for similar problem
+    # Parameters for relevant experience and innovation
     var::Float64 = 1.0
     μ::Float64 = 1.0
     prob_k = Dict{Int, Vector{Float64}}()
@@ -60,34 +60,31 @@ function P_n(s::State, n::Int, def::ProblemDefinition)
 end
 
 # Solve for expected utility for future states from a given state
-function future_utility(state::State, n::Action, U::Utility, π::Policy, h::Int, def::ProblemDefinition, Δβ::Int=0)
+function future_utility(s::State, n::Action, U::Utility, π::Policy, h::Int, def::ProblemDefinition, Δβ::Int=0)
     utility = 0.0
 
     # No utility for terminal state
-    if is_terminal(state, def)
+    if is_terminal(s, def)
         return utility
     end
 
     # Construct distribution over adverse events
-    P = NegativeBinomial(n*state.α, (state.β + state.innov)/(1+state.β + state.innov))
-    expect = n*state.α/(state.β + state.innov)
+    P = NegativeBinomial(n*s.α, (s.β + s.innov)/(1+s.β + s.innov))
     k = 0
 
     # Find utility of next state -- must remove influence of prior because that is accounted for in find_u_n
-    β = def.μ/def.var
-    α = def.μ*β
-    next_state = State(state.α + k - α, state.β + n - β, state.innov + Δβ)
+    next_state = next(s, n, k, Δβ)
     if !(next_state in keys(U[h]))
         U[h][next_state], _ = find_u_n(next_state, U, π, h, def)
     end
 
     # Find utility of future states
-    while ((U[h][next_state] > 0.0  || is_terminal(next(state, n, k, Δβ), def)))
+    while ((U[h][next_state] > 0.0  || is_terminal(next(s, n, k, Δβ), def)))
         utility += U[h][next_state]*pdf(P, k)
 
         # Update next state
         k += 1
-        next_state = State(state.α + k - α, state.β + n - β, state.innov + Δβ)
+        next_state = next(s, n, k, Δβ)
         if !(next_state in keys(U[h]))
             U[h][next_state], _ = find_u_n(next_state, U, π, h, def)
         end
@@ -97,31 +94,26 @@ end
 
 # Find utility and optimal policy for belief state
 function find_u_n(s::State, U::Utility, π::Policy, h::Int, def::ProblemDefinition)
-    # Find new belief state incorporating prior knowledge
-    β = def.μ/def.var
-    α = def.μ*β
-    state_prior = State(s.α + α, s.β + β, s.innov)
-
-    if is_terminal(state_prior, def)
+    if is_terminal(s, def)
         u = 0.0
         n = -1
     else
         # Calculate utility for each value of n
-        n_max = min(10, Int(floor(def.rho/(1 - def.rho)*(state_prior.β + state_prior.innov)/state_prior.α)))
+        n_max = min(10, Int(floor(def.rho/(1 - def.rho)*(s.β + s.innov)/s.α)))
         utilities = zeros(n_max+1)
         for n = 0:n_max
             # Initialize with penalty for collisions
-            utilities[n+1] += -(1 - def.rho)*n*state_prior.α/(state_prior.β + state_prior.innov)
+            utilities[n+1] += -(1 - def.rho)*n*s.α/(s.β + s.innov)
 
             # Reward for reaching terminal state
-            if is_terminal(next(state_prior, n, 0, 0), def)
-                utilities[n+1] += def.rho*P_n(state_prior, n, def)
+            if is_terminal(next(s, n, 0, 0), def)
+                utilities[n+1] += def.rho*P_n(s, n, def)
             end
             
             for i = 1:length(def.β_transitions)
                 # Don't allow transition to infeasible belief state, have bonus scale with num of vehicles
-                if (n + state_prior.β + n*def.β_transitions[i]) <= 0
-                    Δβ = 1-n-state_prior.β
+                if (n + s.β + n*def.β_transitions[i]) <= 0
+                    Δβ = 1-n-s.β
                 else
                     Δβ = n*def.β_transitions[i]
                 end
@@ -134,7 +126,7 @@ function find_u_n(s::State, U::Utility, π::Policy, h::Int, def::ProblemDefiniti
                         end
                         utilities[n+1] += def.β_distribution[i]*def.gamma*U[h+1][s]
                     else 
-                        utilities[n+1] += def.β_distribution[i]*def.gamma*future_utility(state_prior, n, U, π, h+1, def, Δβ)
+                        utilities[n+1] += def.β_distribution[i]*def.gamma*future_utility(s, n, U, π, h+1, def, Δβ)
                     end
                 end
             end
@@ -155,11 +147,11 @@ function find_policy!(states::Set{State}, U::Utility, π::Policy, h::Int, def::P
 end
 
 # Convert policy dict to array
-function array_policy(π::PolicySlice)
-    policy = zeros(50, 50)
-    for i = 1 : 50
-        for j = 1 : 50
-            s = State(i, j, 0)
+function array_policy(π::PolicySlice, α_prior::Float64, β_prior::Float64, α_lo::Int, α_hi::Int, β_lo::Int, β_hi::Int)
+    policy = zeros(α_hi - α_lo + 1, β_hi - β_lo + 1)
+    for i = α_lo : α_hi
+        for j = β_lo : β_hi
+            s = State(i + α_prior, j + β_prior, 0)
             policy[i, j] = π[s]
         end
     end
@@ -168,11 +160,15 @@ end
 
 # Solve finite-horzon MDP given problem definition
 function solve(α_lo::Int, α_hi::Int, β_lo::Int, β_hi::Int, def::ProblemDefinition)
+    # Find prior belief based on problem definition
+    β_prior = def.μ/def.var
+    α_prior = def.μ*β_prior
+
     # Construct state space to compute utility
     states = Set{State}()
     for α in α_lo : α_hi
         for β in β_lo : β_hi
-            push!(states, State(α, β, 0))
+            push!(states, State(α + α_prior, β + β_prior, 0))
         end
     end
 
@@ -191,7 +187,7 @@ function solve(α_lo::Int, α_hi::Int, β_lo::Int, β_hi::Int, def::ProblemDefin
     # Create and return policy array
     policies = zeros(def.H, α_hi, β_hi)
     for h in 1:def.H
-        policies[h, :, :] = array_policy(π[h])[1:α_hi, 1:β_hi]
+        policies[h, :, :] = array_policy(π[h], α_prior, β_prior, α_lo, α_hi, β_lo, β_hi)
     end
     policies
 end
