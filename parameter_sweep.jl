@@ -7,20 +7,8 @@ gammas = collect(0.5:0.25:1.0)
 vars = [0.1, 1.0]
 mus = [0.0, 0.5, 1.0]
 probs = Set{Vector{Float64}}()
-
-prob_array = collect(0.0:0.25:1.0)
-for p1 in prob_array
-    for p2 in prob_array
-        for p3 in prob_array
-            for p4 in prob_array
-                if ((p1+p2+p3+p4) == 1.0) && ((p2+p3) > (p1+p4))
-                    push!(probs, [p1, p2, p3, p4])
-                end
-            end
-        end
-    end
-end
-probs = [[0.0, 1.0, 0.0, 0.0], [0.0, 0.25, 0.25, 0.5], [0.0, 0.0, 1.0, 0.0], [0.25, 0.5, 0.25, 0.0], [0.0, 0.75, 0.0, 0.25]]
+probs = [[0.0, 1.0, 0.0, 0.0], [0.0, 0.25, 0.25, 0.5], [0.0, 0.0, 1.0, 0.0], [0.25, 0.5, 0.25, 0.0], 
+            [0.0, 0.75, 0.0, 0.25], [0.25, 0.25, 0.25, 0.25], [0.0, 0.5, 0.25, 0.25]]
 
 # Initialize dict mapping from params to policy
 params_policy_dict = Dict{Array{Any, 1}, Array{Float64, 3}}()

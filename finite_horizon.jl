@@ -72,7 +72,7 @@ function future_utility(s::State, n::Action, U::Utility, π::Policy, h::Int, def
     P = NegativeBinomial(n*s.α, (s.β + s.innov)/(1+s.β + s.innov))
     k = 0
 
-    # Find utility of next state -- must remove influence of prior because that is accounted for in find_u_n
+    # Find utility of next state if not already known
     next_state = next(s, n, k, Δβ)
     if !(next_state in keys(U[h]))
         U[h][next_state], _ = find_u_n(next_state, U, π, h, def)
