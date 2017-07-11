@@ -10,10 +10,10 @@ using PGFPlots
     # Problem specs
     λ_ref::Float64 = 1.0
     C_ref::Float64 = 0.95
-    rho::Float64 = 0.9
+    eta::Float64 = 0.9
     gamma::Float64 = 1.0
 
-    # Parameters for relevant experience and innovation
+    # Parameters for prior beliefs and innovation
     var::Float64 = 1.0
     μ::Float64 = 1.0
     prob_k = Dict{Int, Vector{Float64}}()
@@ -99,15 +99,15 @@ function find_u_n(s::State, U::Utility, π::Policy, h::Int, def::ProblemDefiniti
         n = -1
     else
         # Calculate utility for each value of n
-        n_max = min(10, Int(floor(def.rho/(1 - def.rho)*(s.β + s.innov)/s.α)))
+        n_max = min(50, Int(floor(def.eta/(1 - def.eta)*(s.β + s.innov)/s.α))) # Max to limit options further, can be relaxed
         utilities = zeros(n_max+1)
         for n = 0:n_max
             # Initialize with penalty for collisions
-            utilities[n+1] += -(1 - def.rho)*n*s.α/(s.β + s.innov)
+            utilities[n+1] += -(1 - def.eta)*n*s.α/(s.β + s.innov)
 
             # Reward for reaching terminal state
             if is_terminal(next(s, n, 0, 0), def)
-                utilities[n+1] += def.rho*P_n(s, n, def)
+                utilities[n+1] += def.eta*P_n(s, n, def)
             end
             
             for i = 1:length(def.β_transitions)
